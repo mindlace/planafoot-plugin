@@ -24,4 +24,19 @@ const entry = market.plugins?.find((p) => p.name === 'planafoot');
 assert.ok(entry, 'marketplace.json: missing planafoot plugin entry');
 assert.equal(entry.source, './', 'marketplace.json: planafoot source must be "./"');
 
+// gemini-extension.json — Gemini native remote MCP
+const gem = read('gemini-extension.json');
+assert.equal(gem.name, 'planafoot', 'gemini-extension.json: name must be "planafoot"');
+assert.ok(
+  typeof gem.version === 'string' && gem.version.length,
+  'gemini-extension.json: version required'
+);
+const gms = gem.mcpServers?.planafoot;
+assert.ok(gms, 'gemini-extension.json: missing mcpServers.planafoot');
+assert.equal(gms.httpUrl, ENDPOINT, `gemini-extension.json: planafoot.httpUrl must be ${ENDPOINT}`);
+assert.ok(
+  !('command' in gms) && !('args' in gms),
+  'gemini-extension.json: no command/args (native remote)'
+);
+
 console.log('All manifests valid.');
