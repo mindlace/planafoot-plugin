@@ -1,0 +1,9 @@
+{
+  "name": "planafoot",
+  "version": "0.1.0",
+  "mcpServers": {
+    "planafoot": {
+      "httpUrl": "https://planafoot.com/mcp"
+    }
+  }
+}
