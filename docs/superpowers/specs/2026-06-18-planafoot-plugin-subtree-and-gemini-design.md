@@ -102,41 +102,61 @@ No remote query, no mapping table, no re-split.
 
 ### Branch topology in planafoot-plugin
 
-- `staging` — tracks planafoot `main` (every push to main).
+- `staging` — tracks planafoot `main`; fed by merging the per-PR feature branch.
 - `main` — the last **released** plugin state; what end users install.
-- per-worktree feature branches — landing places for in-flight changes (named after
-  the planafoot worktree branch).
+- per-PR feature branches — named identically to the planafoot PR branch; the PR
+  target is `staging`.
+
+### Mechanism (no worktree:init; hook + PR correspondence)
+
+The skill is edited as plain `plugin/` files in any planafoot branch — no special
+worktree setup. The sync is driven by a hook and mirrored PRs:
+
+1. **planafoot `pre-push` hook (husky):** when the pushed range touches `plugin/`,
+   run `git subtree split --prefix=plugin --rejoin` (the `--rejoin` writes the
+   `git-subtree-split` trailer into planafoot's history so prod can read it later) and
+   push the split tip to `planafoot-plugin@<same-branch-name>`. Pre-push, not a commit
+   hook, so we don't hit the network on every local commit.
+2. **planafoot PR → mirrored planafoot-plugin PR:** a planafoot GHA, on any PR whose
+   diff touches `plugin/`, ensures a `planafoot-plugin` PR exists from the same-named
+   branch into `staging` (created via the mindlace-make-releases token). This is
+   item 0: plugin changes always have a corresponding planafoot-plugin PR.
+3. **Collision protection:**
+   - planafoot-plugin: `staging` branch protection **rejects merges with conflicts /
+     out-of-date branches**, so the published history can't be force-collided.
+   - planafoot: a `plugin-ok` required check that blocks merge if the planafoot-plugin
+     branch would conflict with `staging`. *Likely redundant* — a textual `plugin/`
+     conflict would also conflict in planafoot `main` — so this check is a belt-and-
+     suspenders guard and may be dropped if it proves to add no signal.
 
 ### Flow
 
 ```mermaid
 sequenceDiagram
-    participant Dev as planafoot worktree
+    participant Dev as planafoot branch
     participant PF as planafoot (main)
     participant PP as planafoot-plugin
-    Dev->>Dev: 0. worktree:init creates planafoot-plugin feature branch (off staging)
     Dev->>Dev: 1. edit planafoot code + plugin/ files
-    Dev->>PP: 2. push subtree to planafoot-plugin@<feature-branch>
-    Dev->>PF: 2. push planafoot branch + open PR (drift guard validates SKILL.md)
-    PF->>PF: 3. PR merges to main
-    PF->>PP: 3. deploy-staging advances planafoot-plugin@staging
+    Dev->>PP: 2a. pre-push hook: subtree split --rejoin → push planafoot-plugin@<branch>
+    Dev->>PF: 2b. push planafoot branch + open PR
+    PF->>PP: 2c. GHA opens mirrored planafoot-plugin PR (<branch> → staging)
+    Note over PF,PP: drift guard validates SKILL.md; collision checks gate both merges
+    PF->>PF: 3. planafoot PR merges to main
+    PP->>PP: 3. deploy-staging merges the same-named planafoot-plugin PR into staging
     Note over PF: 4. release-please cuts a release
     PF->>PP: 5. deploy-prod reads git-subtree-split sha from released tag,<br/>promotes planafoot-plugin@main to it + marker commit
 ```
 
-**deploy-staging** (`on: push → main`): advance `planafoot-plugin@staging` to the
-plugin state of planafoot `main`. Mechanism chosen at implementation time between:
-(a) re-split main and push (symmetric with prod, simplest), or (b) merge the
-per-worktree planafoot-plugin feature branch (preserves hand-written commit messages
-in the published history). Default: **(b)** to keep a readable published history,
-falling back to (a) if branch bookkeeping proves fragile.
+**deploy-staging** (`on: push → main`): merge the same-named planafoot-plugin PR into
+`staging` (the branch name matches the just-merged planafoot PR). Branch protection
+guarantees no-collision merges.
 
-**deploy-prod** (`on: release: published`): the job already checks out the release
-tag to build the Cloudflare worker. Add `fetch-depth: 0`, read
-`git-subtree-split` from the released history, and promote `planafoot-plugin@main` to
-that SHA, then add a `chore: release vX.Y.Z` marker commit. Because the released tag
-is an ancestor of main, its recorded plugin SHA is an ancestor of `staging` → the push
-to `main` fast-forwards.
+**deploy-prod** (`on: release: published`): the job already checks out the release tag
+to build the Cloudflare worker. Add `fetch-depth: 0`, read `git-subtree-split` from
+the released history (`git log --grep="git-subtree-dir: plugin"`), and promote
+`planafoot-plugin@main` to that SHA, then add a `chore: release vX.Y.Z` marker commit.
+Because the released tag is an ancestor of main, its recorded plugin SHA is an ancestor
+of `staging` → the push to `main` fast-forwards.
 
 ## Credentials
 
@@ -168,15 +188,24 @@ Each step is its own worktree + PR.
      `planafoot-plugin` (`git rm -r plugin` → `git subtree add --prefix=plugin
      --squash <planafoot-plugin> main`). Net new files under `plugin/`:
      `gemini-extension.json`, `LICENSE`. Drift-guard path unchanged.
-   - Extend `worktree:init` to create/checkout the matching planafoot-plugin feature
-     branch (off `staging`).
-   - Add the subtree push/promote steps to `deploy-staging.yml` and
-     `deploy-prod.yml`, authenticated via the mindlace-make-releases token.
+   - Add a husky **`pre-push` hook**: when the range touches `plugin/`, run
+     `git subtree split --prefix=plugin --rejoin` and push the tip to
+     `planafoot-plugin@<current-branch>`.
+   - Add a **mirror-PR GHA**: on a planafoot PR touching `plugin/`, ensure a
+     `planafoot-plugin` PR exists from the same-named branch into `staging`.
+   - Add the **`plugin-ok`** required check (collision guard; may be dropped if
+     redundant with planafoot `main` conflicts).
+   - Wire **deploy-staging** to merge the same-named planafoot-plugin PR into
+     `staging`, and **deploy-prod** to promote `main` to the released
+     `git-subtree-split` SHA — both via the mindlace-make-releases token.
    - Decide prettier/eslint ownership of `plugin/`: `SKILL.md` stays prettier-checked
      in planafoot (the drift remediation already runs
      `prettier --check plugin/skills/planafoot/SKILL.md`), so planafoot-plugin must
      carry a matching prettier config; the rest of `plugin/` is ignored by planafoot's
      formatters to avoid ping-pong.
+
+3. **planafoot-plugin — branch protection**: protect `staging` to reject merges with
+   conflicts / out-of-date branches.
 
 ## Drift guard interaction
 
@@ -187,15 +216,17 @@ keeping the published skill always in sync with the live tool surface.
 
 ## Open items to validate in the plan (with real git runs)
 
-- Exact subtree command choreography that keeps the `git-subtree-split` trailer
-  accurate for outbound edits (`subtree push` vs `split --rejoin` vs `pull --squash`).
-  Subtree's `add`/`pull`/`push`/`split`/`--squash`/`--rejoin` interactions are finicky
-  and must be verified empirically, not assumed.
-- Fast-forward discipline: feature branches off `staging` so staging→main promotions
-  stay linear; confirm the first promotion after bootstrap fast-forwards.
-- `git worktree` + subtree ergonomics under `worktree:init`.
-- Gitlink-free reachability: ensure a planafoot-plugin feature branch's commit is
-  reachable (merged to `staging`) before the branch is deleted.
+- The `pre-push` hook choreography: confirm `git subtree split --prefix=plugin
+  --rejoin` writes a `git-subtree-split` trailer that `deploy-prod` can grep, and that
+  the pushed branch tip is what staging later merges. Subtree plumbing is finicky —
+  verify empirically, not by assumption.
+- Fast-forward discipline: per-PR branches push from a base that keeps staging→main
+  promotions linear; confirm the first promotion after bootstrap fast-forwards.
+- Mirror-PR lifecycle: branch naming collisions, what happens when a planafoot PR is
+  closed without merge (orphan planafoot-plugin PR cleanup), and reachability of a
+  feature branch's commit until `staging` has merged it.
+- Whether the `plugin-ok` check earns its keep or is fully redundant with planafoot
+  `main` conflicts.
 
 ## Out of scope
 
