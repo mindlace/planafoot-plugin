@@ -134,17 +134,17 @@ worktree setup. The sync is driven by a hook and mirrored PRs:
 ```mermaid
 sequenceDiagram
     participant Dev as planafoot branch
-    participant PF as planafoot (main)
+    participant PF as planafoot main
     participant PP as planafoot-plugin
-    Dev->>Dev: 1. edit planafoot code + plugin/ files
-    Dev->>PP: 2a. pre-push hook: subtree split --rejoin → push planafoot-plugin@<branch>
-    Dev->>PF: 2b. push planafoot branch + open PR
-    PF->>PP: 2c. GHA opens mirrored planafoot-plugin PR (<branch> → staging)
-    Note over PF,PP: drift guard validates SKILL.md; collision checks gate both merges
+    Dev->>Dev: 1. edit planafoot code and plugin files
+    Dev->>PP: 2a. pre-push hook splits subtree and pushes same-named branch
+    Dev->>PF: 2b. push planafoot branch and open PR
+    PF->>PP: 2c. GHA opens mirrored PR into staging
+    Note over PF,PP: drift guard validates SKILL.md, collision checks gate merges
     PF->>PF: 3. planafoot PR merges to main
-    PP->>PP: 3. deploy-staging merges the same-named planafoot-plugin PR into staging
+    PP->>PP: 3. deploy-staging merges same-named PR into staging
     Note over PF: 4. release-please cuts a release
-    PF->>PP: 5. deploy-prod reads git-subtree-split sha from released tag,<br/>promotes planafoot-plugin@main to it + marker commit
+    PF->>PP: 5. deploy-prod reads git-subtree-split sha, promotes main plus marker
 ```
 
 **deploy-staging** (`on: push → main`): merge the same-named planafoot-plugin PR into
