@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
 const ENDPOINT = 'https://planafoot.com/mcp';
@@ -37,6 +37,28 @@ assert.equal(gms.httpUrl, ENDPOINT, `gemini-extension.json: planafoot.httpUrl mu
 assert.ok(
   !('command' in gms) && !('args' in gms),
   'gemini-extension.json: no command/args (native remote)'
+);
+
+// All manifests must declare the same version
+assert.equal(
+  gem.version,
+  plugin.version,
+  `version drift: gemini-extension.json ${gem.version} != plugin.json ${plugin.version}`
+);
+assert.equal(
+  market.metadata?.version,
+  plugin.version,
+  `version drift: marketplace.json metadata.version ${market.metadata?.version} != plugin.json ${plugin.version}`
+);
+
+// Exactly one shared skill — no per-agent duplication
+const skillFiles = readdirSync('skills', { recursive: true }).filter((f) =>
+  String(f).endsWith('SKILL.md')
+);
+assert.equal(
+  skillFiles.length,
+  1,
+  `expected exactly one SKILL.md under skills/, found ${skillFiles.length}: ${skillFiles.join(', ')}`
 );
 
 console.log('All manifests valid.');
