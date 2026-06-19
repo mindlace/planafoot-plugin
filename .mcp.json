@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "planafoot": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://planafoot.com/mcp"]
+      "type": "http",
+      "url": "https://planafoot.com/mcp"
     }
   }
 }
