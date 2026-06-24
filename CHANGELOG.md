@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/mindlace/planafoot/compare/plugin-v0.3.0...plugin-v0.4.0) (2026-06-24)
+
+
+### Features
+
+* **plugin:** production-ready docs + MCP member listing, WIP displace preview, schedule symmetry ([#738](https://github.com/mindlace/planafoot/issues/738)) ([72e75ab](https://github.com/mindlace/planafoot/commit/72e75ab744735df21b00a912c87b6d3ef5c28dd9))
+
 ## [0.3.0](https://github.com/mindlace/planafoot/compare/plugin-v0.2.0...plugin-v0.3.0) (2026-06-24)
 
 
