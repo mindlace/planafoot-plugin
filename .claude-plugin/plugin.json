@@ -1,7 +1,7 @@
 {
   "name": "planafoot",
-  "version": "0.1.0",
-  "description": "AI-first kanban planning. Connects your agent to your Planafoot quests.",
+  "version": "0.4.0",
+  "description": "AI-first kanban planning. Connects Claude to your Planafoot quests.",
   "homepage": "https://planafoot.com",
   "license": "MIT"
 }

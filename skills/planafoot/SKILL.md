@@ -1,15 +1,15 @@
 ---
 name: planafoot
-description: Use when the user wants to plan, restructure, or recover work in their Planafoot quests. Triggers on "plan", "quest", "tasks", "planafoot", "what changed", "bring back", or natural undo requests.
+description: Use when the user wants to plan, restructure, or recover work in Plan afoot. Triggers on "plan afoot", "plan", "quest", "tasks", "planafoot", "what changed", "bring back", or natural undo requests.
 ---
 
-# Planafoot
+# Plan afoot
 
-You're working with a Planafoot quest — an AI-first kanban for projects with plan documents, dependencies, and recurring tasks. Use this skill to plan, restructure, recover, and explain work via the Planafoot MCP tool surface.
+Plan afoot helps people who find it hard to plan ahead turn intentions into done work. Your job is to **reduce friction**: capture the plan, keep the board workable, and recover what got lost — not just to record tasks. The unit the user cares about is their **plan** and its **tasks**; a **quest** is the workspace those live in. Quests, plans, tasks, commits, and lanes are the machinery beneath that goal — use them in that service.
 
 ## Mental model
 
-A **quest** owns **plans**, and each plan owns **tasks**. Plans have markdown bodies; tasks have dependencies and optional recurrence. **Versioned mutations** (anything that changes plan, task, or dependency content) group into commits with human-readable labels. **Board operations** (column shape, plan ordering, moving tasks between lanes, assignment) are non-versioned direct ops that apply immediately and are not undoable through the commit log. **Undo is strict head-only LIFO**, and it's actor-kind-guarded — by default you can only undo your own commits. History is preserved across reverts; recovery is read-and-rewrite, not graph manipulation.
+The machinery: a **quest** (the user's workspace) owns **plans**, and each plan owns **tasks**. Plans have markdown bodies; tasks have dependencies and optional recurrence. **Versioned mutations** (anything that changes plan, task, or dependency content) group into commits with human-readable labels. **Board operations** (column shape, plan ordering, moving tasks between lanes, assignment) are non-versioned direct ops that apply immediately and are not undoable through the commit log. **Undo is strict head-only LIFO**, and it's actor-kind-guarded — by default you can only undo your own commits. History is preserved across reverts; recovery is read-and-rewrite, not graph manipulation.
 
 Before any work, you need a current quest. Call `list_quests` if you don't have one; `set_current_quest` once the user picks. All subsequent tools default to the current quest unless overridden.
 
@@ -20,6 +20,7 @@ Before any work, you need a current quest. Call `list_quests` if you don't have 
 - `get_plan({ planId, questId?, commitId?, asOf? })` — one plan's full body.
 - `get_task({ taskId, questId?, commitId?, asOf? })` — one task with its deps, dependents, and recurrence siblings.
 - `get_dependency_graph({ questId?, commitId?, asOf? })` — whole-quest graph with a mermaid flowchart string.
+- `list_quest_members({ questId? })` — the quest roster: each member as `{ memberId, handle, name, role, joinedAt }`. `memberId` is the id the `assignees` map and assign/unassign ops use.
 
 ### Commit kinds
 
@@ -34,27 +35,49 @@ Before any work, you need a current quest. Call `list_quests` if you don't have 
 
 No other kinds are valid. The engine-internal kinds (`genesis`, `undo`, `redo`) are not accessible via tool calls.
 
-### Schedule shape (recurrence)
+### Schedule shape
 
-Recurrence is RRULE-based, not a days-count integer. The `schedule` object accepted by `create_task` and `set_task_schedule` is:
+The `schedule` object accepted by `create_task`, `update_task`, and `set_task_schedule` is:
 
 ```json
 {
   "dueDate": "2026-07-01",
   "estMinutes": 30,
-  "rrule": "FREQ=WEEKLY;BYDAY=MO",
-  "dtstart": 1751328000000
+  "rrule": "FREQ=WEEKLY;BYDAY=MO"
 }
 ```
 
-All fields are optional/nullable. Use standard RRULE strings. `dtstart` is epoch ms (UTC midnight of the start day). Anchor-free rules reset `dtstart` to the close-day's UTC midnight on spawn; anchored rules keep their `dtstart`.
+Use `goalDate` instead of `dueDate` for a soft target (no board scheduling horizon commitment).
+
+All fields are optional/nullable. Use standard RRULE strings for `rrule`.
+
+- **`dueDate` is the hard date; `goalDate` is a soft target — set one or the other, never both** (the engine rejects both). Backlog ordering uses the effective soft date (`dueDate ?? goalDate`); only `dueDate` pulls a task onto the board's scheduling horizon. Use `goalDate` to nudge a task earlier in the backlog without committing to a hard deadline.
+- **Do not set `dtstart`.** It is intentionally left unset; for a recurring task the engine stamps it on the spawned occurrence, not the origin. There is no reason to pass it over MCP.
+- **No `planId` needed.** A task is in exactly one plan; the schedule tools derive it. Schedule flows through `create_task({ schedule })`, `update_task({ schedule })`, or the focused `set_task_schedule({ schedule })` — pick `set_task_schedule` (commit kind `'recur'`) when changing schedule is the primary intent.
 
 ### WIP limits and displacement
 
-WIP limits are a hard board invariant. When `move_task` targets a lane that is at its limit, the engine returns `WIP_LIMIT_EXCEEDED` with `{ laneId, limit, count }` in `_meta`. You have two options:
+WIP limits are a **guardrail, not a wall**. When `move_task` targets a full lane, the engine holds the move and returns `WIP_LIMIT_EXCEEDED` with `{ laneId, limit, count, displaces }` in `_meta`, where `displaces` lists the card(s) that _would_ be bumped back to make room (each `{ taskId, title }`). Then:
 
-1. Tell the user the lane is full and ask which task to displace or where else to move.
-2. Pass `displace: true` — the engine bumps the lane's lowest-ranked card(s) back to make room (a cascade). Use `displace: true` only when the user explicitly authorises displacement.
+1. **Name the would-be-displaced card(s) to the user** from `displaces` and ask whether to displace them, or whether to move something elsewhere.
+2. On explicit confirmation, retry with `displace: true` — the engine bumps those card(s) back (a cascade) and the successful response carries `demoted: string[]` (the ids actually bumped); mention them.
+
+Only pass `displace: true` after the user authorises it.
+
+### Blockers and the board
+
+Every card on the board should be independently completable, so `move_task` enforces dependency ("blocked by") edges at placement time. A blocker is unfinished until it reaches **Done** (or the dependency edge is removed). When the task you are moving has an unfinished blocker, the engine returns `BLOCKED_BY_INCOMPLETE` with `{ blockers, overridable }` in `_meta`, and the strength of the rule depends on where you are moving it:
+
+1. **Moving to Done is never allowed while blocked** (`overridable: false`). You cannot complete a task before its blockers — finish or remove the blockers first. There is no flag that overrides this; do not try one.
+2. **Moving onto the board (Todo/Doing) is allowed only with `ignoreBlockers: true`** (`overridable: true`). The default refuses, because it would put a card on the board that can't yet be worked. Pass `ignoreBlockers: true` only when the user explicitly asks to stage the blocked task anyway; otherwise tell them what it's blocked by and leave it in the backlog.
+
+`_meta.blockers` lists the unfinished blockers (each `{ taskId, title }`) — name them to the user. `ignoreBlockers` and `displace` are independent: a move onto a full board lane may need both.
+
+### Reflow (backlog auto-sort)
+
+`reflow_backlog({ questId? })` re-sorts the **backlog** by effective due date (`dueDate ?? goalDate`) → cadence → FIFO, honoring recent manual moves. It is direct/un-versioned (no commit) and backlog-scoped — there is no whole-board reflow.
+
+**Batch, then reflow once.** After creating a batch of tasks, call `reflow_backlog` a single time at the end — not once per task. Only when you created exactly one task is a single reflow (or none) appropriate. The board also reflows automatically each day at the quest's local midnight (then force-fills Todo to its WIP limit), so the morning board is already sorted; you call `reflow_backlog` explicitly only after adding tasks mid-session.
 
 ## Commit hygiene
 
@@ -77,10 +100,11 @@ User: "Let's plan a trip to Tokyo" / "Set up a new project plan for X" / "Add ta
 
 1. `begin_commit({ kind: 'edit', label: '<concrete summary>' })` — e.g. `label: 'plan tokyo trip — 7 days, 3 cities'`.
 2. `create_plan({ commitId, title, bodyMd? })` — bodyMd is the markdown body, no YAML frontmatter. Use the title the user gave you; if they didn't give one, propose one and confirm.
-3. `create_task({ commitId, planId, title, bodyMd?, hue? })` — once per task. If the user listed tasks, batch them. For recurrence, add `schedule: { rrule, dtstart? }` (use kind `'recur'` on the commit if schedule is the primary intent).
+3. `create_task({ commitId, planId, title, bodyMd?, hue? })` — once per task. If the user listed tasks, batch them. For recurrence, add `schedule: { rrule }` (use kind `'recur'` on the commit if schedule is the primary intent).
 4. `add_dependency({ commitId, blockerTaskId, blockedTaskId })` — for any task that must wait on another. Cycles and cross-quest deps are rejected by the engine; trust the error if it fires.
 5. `get_plan({ planId, commitId })` — re-read the plan with the open commit overlaid. Skim the resulting bodies and task list and confirm the diff matches the user's intent.
 6. `promote_commit({ commitId })` — on success, narrate the result to the user (plan title + task count). On `NEEDS_ACK`, follow the hygiene rule above.
+7. After `promote_commit` succeeds, call `reflow_backlog({})` once so the new tasks sort into the backlog by date. (Tasks created inside a commit are only live in the backlog after the commit is promoted.)
 
 If the user abandons mid-flow ("never mind, scrap that") call `abandon_commit({ commitId })` before doing anything else.
 
@@ -94,13 +118,14 @@ User: "Update the Sapporo leg" / "These tasks need to be reordered" / "Push the 
    - Plan body / title: `update_plan({ commitId, planId, title?, bodyMd? })`
    - Delete a plan: `delete_plan({ commitId, planId, questId? })` — versioned `deletePlan` op; requires the commit to be opened with `kind: 'delete'`. Deleted plans are not recoverable through `list_plans` (which shows only live plans) but are preserved in history via `plan_history`.
    - Delete a task: `remove_task({ commitId, planId, taskId, questId? })` — versioned `removeTask` op; requires `kind: 'delete'` on the commit.
-   - Task fields: `update_task({ commitId, taskId, patch: { title?, bodyMd?, hue? } })`
+   - Task fields **and schedule**: `update_task({ commitId, taskId, patch: { title?, bodyMd?, hue? }, schedule? })` — pass `schedule` to set dueDate/goalDate/estMinutes/rrule in the same commit.
    - Reordering: `reorder_tasks({ commitId, planId, orderedTaskIds })` (full ordered list of task ids)
-   - Schedule: `set_task_schedule({ commitId, planId, taskId, schedule })` where `schedule` is `{ dueDate?, estMinutes?, rrule?, dtstart? }`
+   - Schedule: `set_task_schedule({ commitId, taskId, schedule })` — no `planId`; the focused tool for a `recur`-kind change.
    - Moving across plans: `move_task_to_plan({ commitId, taskId, toPlanId })`
    - Deps: `add_dependency({ commitId, blockerTaskId, blockedTaskId })` / `remove_dependency({ commitId, blockerTaskId, blockedTaskId })`
 4. `get_plan({ planId, commitId })` — re-read with the commit overlaid. Confirm the diff.
 5. `promote_commit({ commitId })`. Narrate.
+6. If you added tasks, call `reflow_backlog({})` once after `promote_commit` — not before, since tasks inside an open commit aren't live in the backlog until promoted.
 
 ### 3. Move a task on the board
 
@@ -109,7 +134,7 @@ User: "Move 'book flights' to Doing" / "Put this in the backlog".
 Board placement is **non-versioned** — no commit is opened.
 
 1. `get_quest_view({})` — find the target `laneId` from the `lanes` array.
-2. `move_task({ taskId, toLaneId, rank?, displace? })` — `rank` is a fractional-index string (optional; omit to append). On `WIP_LIMIT_EXCEEDED`, follow the WIP limit guidance above.
+2. `move_task({ taskId, toLaneId, rank?, displace?, ignoreBlockers? })` — `rank` is a fractional-index string (optional; omit to append). On `WIP_LIMIT_EXCEEDED`, follow the WIP limit guidance above; on `BLOCKED_BY_INCOMPLETE`, follow the blockers guidance above (never force a move to Done; use `ignoreBlockers: true` for a board lane only when the user asked).
 3. Narrate the new placement. If the engine spawned a recurrence sibling (`spawned` in the response), mention it.
 
 To reorder plans on the board: `reorder_plan({ planId, rank })` — consult existing ranks from `list_plans`.
@@ -120,7 +145,7 @@ User: "Assign the booking tasks to Alice" / "Make Bob the owner of this plan".
 
 Assignment is a **direct op** — no commit is opened.
 
-1. Member ids for subjects that already have assignees are available in the `assignees` map returned by `get_quest_view({})` (`subjectId → memberIds[]`). You can reuse any id that already appears there (e.g. to assign someone who is already on another task or plan). **Member-id discovery for a brand-new assignee is not exposed over MCP** — if you need to assign someone not yet visible in `assignees`, ask the user to provide their member id.
+1. Call `list_quest_members({})` to get the roster — each member as `{ memberId, handle, name, role, joinedAt }`. Pick the `memberId` for the person the user named. (For someone already assigned elsewhere, their id also appears in the `assignees` map from `get_quest_view`.)
 2. `direct_op({ op: { op: 'assign', subjectType: 'task', subjectId: taskId, assigneeId: memberId } })` — once per subject. Use `subjectType: 'plan'` for plan-level assignment.
 3. To remove: `direct_op({ op: { op: 'unassign', subjectType, subjectId, assigneeId } })`.
 4. Verify with `get_quest_view({})` — current assignees appear in the `assignees` map (`subjectId → memberIds[]`).
@@ -162,6 +187,7 @@ For direct-op history (lane changes, placements, assignment events):
 
 - `get_lane_history({ questId? })` — full lane-config event log, oldest-first.
 - `get_placement_history({ taskId, questId? })` — a task's full placement (move/lane) log.
+- `explain_placement({ taskId, questId? })` — explain why a task sits where it does — returns its current placement lane/rank plus the reason, cause, and resistance recorded on it.
 - `get_assignment_history({ subjectId, questId? })` — a task or plan's full assign/unassign log.
 - `get_quest_state_as_of({ asOf, questId? })` — fold the direct-op event logs to a past instant (`asOf` is epoch ms); returns lane config, each task's placement, and each subject's assignees at that moment.
 
@@ -197,7 +223,8 @@ The MCP tools return errors as `{ isError: true, _meta: { code, ... } }`. Branch
   - `not_open` — the commit is already promoted, abandoned, or reverted (`_meta.status` says which). Start a fresh commit.
   - `wrong_actor` — the commit was opened by a different actor (`_meta.ownerActorId`, `_meta.actorKind`). You can't take it over. Start your own.
 - `COMMIT_NOT_FOUND` — `get_commit` / `commit_diff` got an id that doesn't exist on this quest. Re-read history.
-- `WIP_LIMIT_EXCEEDED` — `move_task` target lane is at its WIP limit. `_meta` carries `laneId`, `limit`, `count`. Either pick a different lane or pass `displace: true` after confirming with the user.
+- `WIP_LIMIT_EXCEEDED` — `move_task` target lane is at its WIP limit. `_meta` carries `laneId`, `limit`, `count`, and `displaces` (the card(s) that would be bumped, each `{ taskId, title }`). Name them to the user; either move elsewhere or pass `displace: true` after they confirm.
+- `BLOCKED_BY_INCOMPLETE` — `move_task` was refused because the task has an unfinished blocker. `_meta` carries `blockers` (each `{ taskId, title }`) and `overridable`. `overridable: false` means a move to Done — never allowed while blocked; finish or remove the blockers first, no flag overrides it. `overridable: true` means a board lane (Todo/Doing) — retry with `ignoreBlockers: true` only if the user explicitly asked to stage it anyway; otherwise name the blockers and leave it in the backlog.
 - `PLAN_NOT_FOUND` / `TASK_NOT_FOUND` — the id is wrong, or the entity was removed. Re-list to confirm; the user may be referring to something already deleted (use scenario 8 to recover if so).
 - `GUARD_FAILED` — `undo`/`redo` refused because the head was authored by a different actor kind. `_meta.headActorKind`, `_meta.headCommitId`, `_meta.headLabel` describe what's at the top. Surface the label to the user; ask before widening with `only: 'any'`.
 - `NOTHING_TO_UNDO` / `NOTHING_TO_REDO` — empty stack. Say so.

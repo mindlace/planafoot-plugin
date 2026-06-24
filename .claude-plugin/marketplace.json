@@ -5,14 +5,14 @@
     "url": "https://planafoot.com"
   },
   "metadata": {
-    "description": "Planafoot agent plugin — MCP connector + shared skill for the Planafoot planner",
-    "version": "0.1.0"
+    "description": "Planafoot Claude plugin — MCP connector + skill for the Planafoot planner",
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "planafoot",
       "source": "./",
-      "description": "Connects your agent to your Planafoot quests at https://planafoot.com/mcp and ships a shared SKILL.md teaching the planning, recovery, and undo flows.",
+      "description": "Connects Claude to your Planafoot quests at https://planafoot.com/mcp and ships a SKILL.md teaching the planning, recovery, and undo flows.",
       "homepage": "https://planafoot.com",
       "license": "MIT"
     }
