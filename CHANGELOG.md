@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/mindlace/planafoot/compare/plugin-v0.4.0...plugin-v1.1.2) (2026-06-29)
+
+
+### Miscellaneous Chores
+
+* release 1.1.2 ([#901](https://github.com/mindlace/planafoot/issues/901)) ([da113f3](https://github.com/mindlace/planafoot/commit/da113f31f0d6968c256fb7e492c463056eca70ef))
+
 ## [0.4.0](https://github.com/mindlace/planafoot/compare/plugin-v0.3.0...plugin-v0.4.0) (2026-06-24)
 
 
