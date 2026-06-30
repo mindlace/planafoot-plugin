@@ -31,7 +31,7 @@ Before any work, you need a current quest. Call `list_quests` if you don't have 
 | `'edit'`   | creating or reworking content (plans, tasks, plan bodies)    |
 | `'dep'`    | dependency-only changes (add/remove deps, no content change) |
 | `'delete'` | removing a plan or task                                      |
-| `'recur'`  | setting or changing a task's recurrence schedule             |
+| `'recur'`  | setting or changing a task's or plan's recurrence schedule   |
 
 No other kinds are valid. The engine-internal kinds (`genesis`, `undo`, `redo`) are not accessible via tool calls.
 
@@ -54,6 +54,10 @@ All fields are optional/nullable. Use standard RRULE strings for `rrule`.
 - **`dueDate` is the hard date; `goalDate` is a soft target — set one or the other, never both** (the engine rejects both). Backlog ordering uses the effective soft date (`dueDate ?? goalDate`); only `dueDate` pulls a task onto the board's scheduling horizon. Use `goalDate` to nudge a task earlier in the backlog without committing to a hard deadline.
 - **Do not set `dtstart`.** It is intentionally left unset; for a recurring task the engine stamps it on the spawned occurrence, not the origin. There is no reason to pass it over MCP.
 - **No `planId` needed.** A task is in exactly one plan; the schedule tools derive it. Schedule flows through `create_task({ schedule })`, `update_task({ schedule })`, or the focused `set_task_schedule({ schedule })` — pick `set_task_schedule` (commit kind `'recur'`) when changing schedule is the primary intent.
+
+**Plan recurrence (whole-plan repeat).** Distinct from task recurrence: a recurring _plan_ re-spawns the entire plan — its non-recurring tasks cloned, intra-plan deps copied, recurring tasks inside it excluded (they self-recur). Set it with `set_plan_schedule({ commitId, planId, schedule: { rrule } })` (commit kind `'recur'`), or inline via `create_plan({ ..., rrule })` / `update_plan({ ..., rrule })`. Use standard RRULE strings; **leave `dtstart` unset** — the engine anchors from the plan. Pass `rrule: null` to stop a plan recurring.
+
+**Timing contrast — important.** A recurring **task** comes back _immediately_ when you complete it (the next instance appears at once, carrying its next due date). A recurring **plan** is _deferred_: the next plan instance does NOT appear until its recurrence date arrives. Don't expect a freshly-recurred plan to show up the moment the current one is finished.
 
 ### WIP limits and displacement
 
@@ -99,7 +103,7 @@ The flows below are the canonical recipes. When the user's request matches a sce
 User: "Let's plan a trip to Tokyo" / "Set up a new project plan for X" / "Add tasks for Y".
 
 1. `begin_commit({ kind: 'edit', label: '<concrete summary>' })` — e.g. `label: 'plan tokyo trip — 7 days, 3 cities'`.
-2. `create_plan({ commitId, title, bodyMd? })` — bodyMd is the markdown body, no YAML frontmatter. Use the title the user gave you; if they didn't give one, propose one and confirm.
+2. `create_plan({ commitId, title, bodyMd? })` — bodyMd is the markdown body, no YAML frontmatter. Use the title the user gave you; if they didn't give one, propose one and confirm. To make the whole plan repeat, pass `rrule` on `create_plan({ ..., rrule })` (or follow up later with `set_plan_schedule`); note the plan won't reappear until its next recurrence date arrives — unlike task recurrence, which spawns the next instance immediately on completion.
 3. `create_task({ commitId, planId, title, bodyMd?, hue? })` — once per task. If the user listed tasks, batch them. For recurrence, add `schedule: { rrule }` (use kind `'recur'` on the commit if schedule is the primary intent).
 4. `add_dependency({ commitId, blockerTaskId, blockedTaskId })` — for any task that must wait on another. Cycles and cross-quest deps are rejected by the engine; trust the error if it fires.
 5. `get_plan({ planId, commitId })` — re-read the plan with the open commit overlaid. Skim the resulting bodies and task list and confirm the diff matches the user's intent.
@@ -121,6 +125,7 @@ User: "Update the Sapporo leg" / "These tasks need to be reordered" / "Push the 
    - Task fields **and schedule**: `update_task({ commitId, taskId, patch: { title?, bodyMd?, hue? }, schedule? })` — pass `schedule` to set dueDate/goalDate/estMinutes/rrule in the same commit.
    - Reordering: `reorder_tasks({ commitId, planId, orderedTaskIds })` (full ordered list of task ids)
    - Schedule: `set_task_schedule({ commitId, taskId, schedule })` — no `planId`; the focused tool for a `recur`-kind change.
+   - Plan recurrence (start/stop/adjust): `set_plan_schedule({ commitId, planId, schedule: { rrule } })` (commit kind `'recur'`), or pass `rrule` on `update_plan`. Pass `rrule: null` to stop the plan recurring.
    - Moving across plans: `move_task_to_plan({ commitId, taskId, toPlanId })`
    - Deps: `add_dependency({ commitId, blockerTaskId, blockedTaskId })` / `remove_dependency({ commitId, blockerTaskId, blockedTaskId })`
 4. `get_plan({ planId, commitId })` — re-read with the commit overlaid. Confirm the diff.
