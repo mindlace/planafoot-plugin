@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/mindlace/planafoot/compare/plugin-v1.1.2...plugin-v1.2.0) (2026-07-03)
+
+
+### Features
+
+* **mcp:** plan recurrence surface + manual/plugin docs ([#931](https://github.com/mindlace/planafoot/issues/931)) ([9aad1de](https://github.com/mindlace/planafoot/commit/9aad1de9a1bfc08876eb0fbb80ae21c799de26f6))
+
 ## [1.1.2](https://github.com/mindlace/planafoot/compare/plugin-v0.4.0...plugin-v1.1.2) (2026-06-29)
 
 
