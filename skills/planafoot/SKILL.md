@@ -123,6 +123,7 @@ User: "Update the Sapporo leg" / "These tasks need to be reordered" / "Push the 
    - Delete a plan: `delete_plan({ commitId, planId, questId? })` — versioned `deletePlan` op; requires the commit to be opened with `kind: 'delete'`. Deleted plans are not recoverable through `list_plans` (which shows only live plans) but are preserved in history via `plan_history`.
    - Delete a task: `remove_task({ commitId, planId, taskId, questId? })` — versioned `removeTask` op; requires `kind: 'delete'` on the commit.
    - Task fields **and schedule**: `update_task({ commitId, taskId, patch: { title?, bodyMd?, hue? }, schedule? })` — pass `schedule` to set dueDate/goalDate/estMinutes/rrule in the same commit.
+   - Append a note without rewriting the body: `append_task({ taskId, md, questId? })` — immediate write, no `commitId`. On a support thread the note mirrors to the reporter's linked thread; errors `TASK_NOT_FOUND` / `THREAD_CLOSED` / `INVALID_INPUT`.
    - Reordering: `reorder_tasks({ commitId, planId, orderedTaskIds })` (full ordered list of task ids)
    - Schedule: `set_task_schedule({ commitId, taskId, schedule })` — no `planId`; the focused tool for a `recur`-kind change.
    - Plan recurrence (start/stop/adjust): `set_plan_schedule({ commitId, planId, schedule: { rrule } })` (commit kind `'recur'`), or pass `rrule` on `update_plan`. Pass `rrule: null` to stop the plan recurring.
