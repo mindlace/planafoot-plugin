@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/mindlace/planafoot/compare/plugin-v1.2.0...plugin-v1.3.0) (2026-07-08)
+
+
+### Features
+
+* **mcp:** add append_task tool with support-thread mirroring ([#1114](https://github.com/mindlace/planafoot/issues/1114)) ([c8292cc](https://github.com/mindlace/planafoot/commit/c8292ccb6c3dca1e101019ffb039b913461b12ee))
+
 ## [1.2.0](https://github.com/mindlace/planafoot/compare/plugin-v1.1.2...plugin-v1.2.0) (2026-07-03)
 
 
