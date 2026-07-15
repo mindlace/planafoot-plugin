@@ -21,6 +21,7 @@ Before any work, you need a current quest. Call `list_quests` if you don't have 
 - `get_task({ taskId, questId?, commitId?, asOf? })` — one task with its deps, dependents, and recurrence siblings.
 - `get_dependency_graph({ questId?, commitId?, asOf? })` — whole-quest graph with a mermaid flowchart string.
 - `list_quest_members({ questId? })` — the quest roster: each member as `{ memberId, handle, name, role, joinedAt }`. `memberId` is the id the `assignees` map and assign/unassign ops use.
+- `search_quest({ q, titleOnly?, includeDone? })` — keyword-search the quest's live tasks and plans; returns matching hits with ids, titles, status and a snippet. Reach for this to locate a task/plan by a word instead of `list_plans` + scanning.
 
 ### Commit kinds
 
