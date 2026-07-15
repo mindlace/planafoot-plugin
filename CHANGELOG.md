@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/mindlace/planafoot/compare/plugin-v1.3.0...plugin-v1.4.0) (2026-07-15)
+
+
+### Features
+
+* **mcp:** add search_quest tool for keyword task/plan lookup ([#1256](https://github.com/mindlace/planafoot/issues/1256)) ([5002795](https://github.com/mindlace/planafoot/commit/50027954b8fafaed646701967ea8364409cf7f46))
+
 ## [1.3.0](https://github.com/mindlace/planafoot/compare/plugin-v1.2.0...plugin-v1.3.0) (2026-07-08)
 
 
