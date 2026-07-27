@@ -15,7 +15,7 @@ Before any work, you need a current quest. Call `list_quests` if you don't have 
 
 ### Reading quest state
 
-- `get_quest_view({ questId? })` — quest facts + lane config + plan headers. Pass `commitId` to preview an open commit or `asOf` (epoch ms) to project historical state. Returns an `assignees` map (`subjectId → memberIds[]`) for the whole quest.
+- `get_quest_view({ questId? })` — quest facts + task-lane config + plan headers. Pass `commitId` to preview an open commit or `asOf` (epoch ms) to project historical state. Returns an `assignees` map (`subjectId → memberIds[]`) for the whole quest.
 - `list_plans({ questId?, includeUnplanned?, commitId?, asOf? })` — all live plans with full task lists and intra-plan deps.
 - `get_plan({ planId, questId?, commitId?, asOf? })` — one plan's full body.
 - `get_task({ taskId, questId?, commitId?, asOf? })` — one task with its deps, dependents, and recurrence siblings.
@@ -192,11 +192,11 @@ The same shape applies to tasks via `task_history({ taskId, includeReverted: tru
 
 For direct-op history (lane changes, placements, assignment events):
 
-- `get_lane_history({ questId? })` — full lane-config event log, oldest-first.
+- `get_lane_history({ questId? })` — task-lane config event log, oldest-first; a non-task lane's events (e.g. "Plans done") are withheld.
 - `get_placement_history({ taskId, questId? })` — a task's full placement (move/lane) log.
 - `explain_placement({ taskId, questId? })` — explain why a task sits where it does — returns its current placement lane/rank plus the reason, cause, and resistance recorded on it.
 - `get_assignment_history({ subjectId, questId? })` — a task or plan's full assign/unassign log.
-- `get_quest_state_as_of({ asOf, questId? })` — fold the direct-op event logs to a past instant (`asOf` is epoch ms); returns lane config, each task's placement, and each subject's assignees at that moment.
+- `get_quest_state_as_of({ asOf, questId? })` — fold the direct-op event logs to a past instant (`asOf` is epoch ms); returns task-lane config, each task's placement, and each subject's assignees at that moment.
 
 ### 8. "Bring back the thing I deleted yesterday"
 
@@ -212,7 +212,7 @@ Recovery is **read-and-rewrite**, not graph manipulation. There is no "revert th
 
 1. `undo({})` — no args means LIFO undo of the head, with the default `only: 'ai'` guard.
 2. On success: narrate the label of what was undone, and offer `redo` if the user changes their mind.
-3. On `GUARD_FAILED`: explain that the most recent change was a human edit (the engine returns `headActorKind`, `headCommitId`, and `headLabel` in `_meta`). Quote the label. Ask whether to widen with `only: 'any'`. Only retry after explicit consent.
+3. On `GUARD_FAILED`: this is the `undo`/`redo` actor-kind guard specifically — `_meta` carries `headActorKind`, `headCommitId`, and `headLabel`. Explain that the most recent change was a human edit, quote the label, and ask whether to widen with `only: 'any'`. Only retry after explicit consent. (`GUARD_FAILED` from other tools, e.g. `move_task`, has a different `_meta` shape and does not fit this recipe — see the error crib.)
 4. On `NOTHING_TO_UNDO`: there's nothing in the undo stack — say so, don't pretend.
 5. If the user wants to undo further back than head, explain that undo is strict LIFO and offer to walk `quest_history` instead. Recovery from mid-history goes through scenario 8.
 
@@ -233,7 +233,9 @@ The MCP tools return errors as `{ isError: true, _meta: { code, ... } }`. Branch
 - `WIP_LIMIT_EXCEEDED` — `move_task` target lane is at its WIP limit. `_meta` carries `laneId`, `limit`, `count`, and `displaces` (the card(s) that would be bumped, each `{ taskId, title }`). Name them to the user; either move elsewhere or pass `displace: true` after they confirm.
 - `BLOCKED_BY_INCOMPLETE` — `move_task` was refused because the task has an unfinished blocker. `_meta` carries `blockers` (each `{ taskId, title }`) and `overridable`. `overridable: false` means a move to Done — never allowed while blocked; finish or remove the blockers first, no flag overrides it. `overridable: true` means a board lane (Todo/Doing) — retry with `ignoreBlockers: true` only if the user explicitly asked to stage it anyway; otherwise name the blockers and leave it in the backlog.
 - `PLAN_NOT_FOUND` / `TASK_NOT_FOUND` — the id is wrong, or the entity was removed. Re-list to confirm; the user may be referring to something already deleted (use scenario 8 to recover if so).
-- `GUARD_FAILED` — `undo`/`redo` refused because the head was authored by a different actor kind. `_meta.headActorKind`, `_meta.headCommitId`, `_meta.headLabel` describe what's at the top. Surface the label to the user; ask before widening with `only: 'any'`.
+- `GUARD_FAILED` — covers two distinct guards, distinguishable by `_meta` shape:
+  - `undo`/`redo` refused because the head was authored by a different actor kind. `_meta.headActorKind`, `_meta.headCommitId`, `_meta.headLabel` describe what's at the top. Surface the label to the user; ask before widening with `only: 'any'`.
+  - `move_task` targeted a lane that does not hold task cards (e.g. the "Plans done" lane). `_meta.laneId`, `_meta.kind` (the lane's non-task kind), and `_meta.overridable: false` — no `headLabel`, so this is NOT a human-edit conflict; do not offer `only: 'any'` (meaningless here). Instead call `get_quest_view` for the lanes the task can actually be moved to and retry with a valid `toLaneId`.
 - `NOTHING_TO_UNDO` / `NOTHING_TO_REDO` — empty stack. Say so.
 - `QUOTA_EXCEEDED` — the user has hit their tier limit for creating plans or tasks. Surface this to the user immediately ("You've reached the plan/task limit for your current plan") and stop — do not retry, do not abandon and re-open a commit. Upgrading their subscription is the resolution path; you cannot work around it.
 
