@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/mindlace/planafoot/compare/plugin-v1.4.0...plugin-v1.5.0) (2026-07-30)
+
+
+### Features
+
+* rename the Backlog surface to Queue, down to the persisted lane role ([#1538](https://github.com/mindlace/planafoot/issues/1538)) ([1ee7a83](https://github.com/mindlace/planafoot/commit/1ee7a83a7256887dd96924a742ab4f6debc30f9d))
+
+
+### Bug Fixes
+
+* **mcp:** close the plan-lane holes and delete the dead *DeltasSince family ([#1521](https://github.com/mindlace/planafoot/issues/1521)) ([e09937e](https://github.com/mindlace/planafoot/commit/e09937ef5133c5d1214c64f1463212c1a6d3f8ef))
+
 ## [1.4.0](https://github.com/mindlace/planafoot/compare/plugin-v1.3.0...plugin-v1.4.0) (2026-07-15)
 
 
