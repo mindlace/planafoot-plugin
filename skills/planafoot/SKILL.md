@@ -78,6 +78,8 @@ Every card on the board should be independently completable, so `move_task` enfo
 
 `_meta.blockers` lists the unfinished blockers (each `{ taskId, title }`) — name them to the user. `ignoreBlockers` and `displace` are independent: a move onto a full board lane may need both.
 
+The reverse direction is guarded too: moving a done task **out of** Done is refused with `BLOCKS_DONE_DEPENDENT` if something that depends on it is also Done — that dependent would be left finished above unfinished work. `_meta.dependents` lists them (each `{ taskId, title }`); reopen them first, or remove the dependency. There is no override — unlike the board case, no `ignoreBlockers` escape exists.
+
 ### Reflow (queue auto-sort)
 
 `reflow_queue({ questId? })` re-sorts the **queue** by effective due date (`dueDate ?? goalDate`) → cadence → FIFO, honoring recent manual moves. It is direct/un-versioned (no commit) and queue-scoped — there is no whole-board reflow.
@@ -141,7 +143,7 @@ User: "Move 'book flights' to Doing" / "Put this in the queue".
 Board placement is **non-versioned** — no commit is opened.
 
 1. `get_quest_view({})` — find the target `laneId` from the `lanes` array.
-2. `move_task({ taskId, toLaneId, rank?, displace?, ignoreBlockers? })` — `rank` is a fractional-index string (optional; omit to append). On `WIP_LIMIT_EXCEEDED`, follow the WIP limit guidance above; on `BLOCKED_BY_INCOMPLETE`, follow the blockers guidance above (never force a move to Done; use `ignoreBlockers: true` for a board lane only when the user asked).
+2. `move_task({ taskId, toLaneId, rank?, displace?, ignoreBlockers? })` — `rank` is a fractional-index string (optional; omit to append). On `WIP_LIMIT_EXCEEDED`, follow the WIP limit guidance above; on `BLOCKED_BY_INCOMPLETE`, follow the blockers guidance above (never force a move to Done; use `ignoreBlockers: true` for a board lane only when the user asked). On `BLOCKS_DONE_DEPENDENT`, moving the task out of Done is refused because a done dependent would be left finished above unfinished work — reopen those dependents first, or remove the dependency; there is no override.
 3. Narrate the new placement. If the engine spawned a recurrence sibling (`spawned` in the response), mention it.
 
 To reorder plans on the board: `reorder_plan({ planId, rank })` — consult existing ranks from `list_plans`.
@@ -232,6 +234,7 @@ The MCP tools return errors as `{ isError: true, _meta: { code, ... } }`. Branch
 - `COMMIT_NOT_FOUND` — `get_commit` / `commit_diff` got an id that doesn't exist on this quest. Re-read history.
 - `WIP_LIMIT_EXCEEDED` — `move_task` target lane is at its WIP limit. `_meta` carries `laneId`, `limit`, `count`, and `displaces` (the card(s) that would be bumped, each `{ taskId, title }`). Name them to the user; either move elsewhere or pass `displace: true` after they confirm.
 - `BLOCKED_BY_INCOMPLETE` — `move_task` was refused because the task has an unfinished blocker. `_meta` carries `blockers` (each `{ taskId, title }`) and `overridable`. `overridable: false` means a move to Done — never allowed while blocked; finish or remove the blockers first, no flag overrides it. `overridable: true` means a board lane (Todo/Doing) — retry with `ignoreBlockers: true` only if the user explicitly asked to stage it anyway; otherwise name the blockers and leave it in the queue.
+- `BLOCKS_DONE_DEPENDENT` — `move_task` was refused because the task is Done and something that depends on it is also Done: moving it out of Done would leave that dependent finished above unfinished work. `_meta` carries `dependents` (each `{ taskId, title }`). Reopen them first, or remove the dependency — there is no override; unlike the board case, no `ignoreBlockers` escape exists.
 - `PLAN_NOT_FOUND` / `TASK_NOT_FOUND` — the id is wrong, or the entity was removed. Re-list to confirm; the user may be referring to something already deleted (use scenario 8 to recover if so).
 - `GUARD_FAILED` — covers two distinct guards, distinguishable by `_meta` shape:
   - `undo`/`redo` refused because the head was authored by a different actor kind. `_meta.headActorKind`, `_meta.headCommitId`, `_meta.headLabel` describe what's at the top. Surface the label to the user; ask before widening with `only: 'any'`.
