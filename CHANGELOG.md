@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/mindlace/planafoot/compare/plugin-v1.5.0...plugin-v1.6.0) (2026-08-02)
+
+
+### Features
+
+* **quest-store:** the needs gate — follow-or-join, told out loud ([#1579](https://github.com/mindlace/planafoot/issues/1579)) ([84fa5f2](https://github.com/mindlace/planafoot/commit/84fa5f27c7d811d237f51359307ef1dca54801db))
+
+
+### Bug Fixes
+
+* **quest-store:** make the done/blocker invariant hold at rest, not just on completion ([#1568](https://github.com/mindlace/planafoot/issues/1568)) ([75ab031](https://github.com/mindlace/planafoot/commit/75ab031c3c8c522b17a60e01b149bd357d09771f))
+
 ## [1.5.0](https://github.com/mindlace/planafoot/compare/plugin-v1.4.0...plugin-v1.5.0) (2026-07-30)
 
 

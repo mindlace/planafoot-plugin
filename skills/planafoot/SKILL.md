@@ -71,12 +71,11 @@ Only pass `displace: true` after the user authorises it.
 
 ### Blockers and the board
 
-Every card on the board should be independently completable, so `move_task` enforces dependency ("blocked by") edges at placement time. A blocker is unfinished until it reaches **Done** (or the dependency edge is removed). When the task you are moving has an unfinished blocker, the engine returns `BLOCKED_BY_INCOMPLETE` with `{ blockers, overridable }` in `_meta`, and the strength of the rule depends on where you are moving it:
+Every card on the board should be independently completable, so `move_task` enforces **follow-or-join**: a task may move into the same lane as its least-advanced unfinished prerequisite, or any earlier lane, but never a later one — so a task with unfinished needs can never reach Done, and can join a blocker on the board without waiting for it to finish. When a move would advance the task past an unmet blocker, the engine returns `NEEDS_NOT_MET` with `{ blockers, remedy }` in `_meta`, and there is no override — the rule applies identically to a person and to you.
 
-1. **Moving to Done is never allowed while blocked** (`overridable: false`). You cannot complete a task before its blockers — finish or remove the blockers first. There is no flag that overrides this; do not try one.
-2. **Moving onto the board (Todo/Doing) is allowed only with `ignoreBlockers: true`** (`overridable: true`). The default refuses, because it would put a card on the board that can't yet be worked. Pass `ignoreBlockers: true` only when the user explicitly asks to stage the blocked task anyway; otherwise tell them what it's blocked by and leave it in the queue.
+`_meta.blockers` lists the direct binding blockers (each `{ taskId, title }`) — name them to the user. `_meta.remedy` is an ordered, executable list of prospective moves (same shape) that would clear the way: issue each as its own `move_task` call, in order, then retry the original move. `remedy` and `displace` are independent: clearing a remedy step onto a full board lane may still need `displace: true`.
 
-`_meta.blockers` lists the unfinished blockers (each `{ taskId, title }`) — name them to the user. `ignoreBlockers` and `displace` are independent: a move onto a full board lane may need both.
+The reverse direction is guarded too: moving a done task **out of** Done is refused with `BLOCKS_DONE_DEPENDENT` if something that depends on it is also Done — that dependent would be left finished above unfinished work. `_meta.dependents` lists them (each `{ taskId, title }`); reopen them first, or remove the dependency. There is no override for this one either.
 
 ### Reflow (queue auto-sort)
 
@@ -141,7 +140,7 @@ User: "Move 'book flights' to Doing" / "Put this in the queue".
 Board placement is **non-versioned** — no commit is opened.
 
 1. `get_quest_view({})` — find the target `laneId` from the `lanes` array.
-2. `move_task({ taskId, toLaneId, rank?, displace?, ignoreBlockers? })` — `rank` is a fractional-index string (optional; omit to append). On `WIP_LIMIT_EXCEEDED`, follow the WIP limit guidance above; on `BLOCKED_BY_INCOMPLETE`, follow the blockers guidance above (never force a move to Done; use `ignoreBlockers: true` for a board lane only when the user asked).
+2. `move_task({ taskId, toLaneId, rank?, displace? })` — `rank` is a fractional-index string (optional; omit to append). On `WIP_LIMIT_EXCEEDED`, follow the WIP limit guidance above; on `NEEDS_NOT_MET`, follow the blockers guidance above — work the `remedy` list, in order, then retry; there is no override. On `BLOCKS_DONE_DEPENDENT`, moving the task out of Done is refused because a done dependent would be left finished above unfinished work — reopen those dependents first, or remove the dependency; there is no override.
 3. Narrate the new placement. If the engine spawned a recurrence sibling (`spawned` in the response), mention it.
 
 To reorder plans on the board: `reorder_plan({ planId, rank })` — consult existing ranks from `list_plans`.
@@ -231,7 +230,8 @@ The MCP tools return errors as `{ isError: true, _meta: { code, ... } }`. Branch
   - `wrong_actor` — the commit was opened by a different actor (`_meta.ownerActorId`, `_meta.actorKind`). You can't take it over. Start your own.
 - `COMMIT_NOT_FOUND` — `get_commit` / `commit_diff` got an id that doesn't exist on this quest. Re-read history.
 - `WIP_LIMIT_EXCEEDED` — `move_task` target lane is at its WIP limit. `_meta` carries `laneId`, `limit`, `count`, and `displaces` (the card(s) that would be bumped, each `{ taskId, title }`). Name them to the user; either move elsewhere or pass `displace: true` after they confirm.
-- `BLOCKED_BY_INCOMPLETE` — `move_task` was refused because the task has an unfinished blocker. `_meta` carries `blockers` (each `{ taskId, title }`) and `overridable`. `overridable: false` means a move to Done — never allowed while blocked; finish or remove the blockers first, no flag overrides it. `overridable: true` means a board lane (Todo/Doing) — retry with `ignoreBlockers: true` only if the user explicitly asked to stage it anyway; otherwise name the blockers and leave it in the queue.
+- `NEEDS_NOT_MET` — `move_task` was refused because the move would advance the task past an unmet blocker (follow-or-join). `_meta` carries `blockers` (the direct binding set, each `{ taskId, title }`) and `remedy` (an ordered, executable list of prospective moves, same shape) that clears the way. There is no override — work `remedy` top to bottom, issuing each as its own `move_task`, then retry.
+- `BLOCKS_DONE_DEPENDENT` — `move_task` was refused because the task is Done and something that depends on it is also Done: moving it out of Done would leave that dependent finished above unfinished work. `_meta` carries `dependents` (each `{ taskId, title }`). Reopen them first, or remove the dependency — there is no override.
 - `PLAN_NOT_FOUND` / `TASK_NOT_FOUND` — the id is wrong, or the entity was removed. Re-list to confirm; the user may be referring to something already deleted (use scenario 8 to recover if so).
 - `GUARD_FAILED` — covers two distinct guards, distinguishable by `_meta` shape:
   - `undo`/`redo` refused because the head was authored by a different actor kind. `_meta.headActorKind`, `_meta.headCommitId`, `_meta.headLabel` describe what's at the top. Surface the label to the user; ask before widening with `only: 'any'`.
